@@ -10,8 +10,9 @@
 use debug_unreachable::debug_unreachable;
 use rust_hawktracer::*;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::{self, transmute};
 use std::ops::{Index, IndexMut, Range};
+use std::ptr::NonNull;
 use std::{
     alloc::{alloc, dealloc, Layout},
     u32,
@@ -231,6 +232,18 @@ impl<T: Pixel> PlaneData<T> {
 
         pd
     }
+
+    /// # Safety
+    ///
+    /// - This changes a non-mutable reference to a mutable one.
+    ///   DO NOT reuse the original source of the input data for ANY PURPOSES afterwards.
+    unsafe fn from_slice_zerocopy(data: &[T]) -> Self {
+        // SAFETY: we initialize the plane data before returning
+        let mut pd = unsafe { Self::new_uninitialized(data.len()) };
+        pd.ptr = NonNull::new(transmute(data.as_ptr())).expect("data must not be null");
+        pd.len = data.len();
+        pd
+    }
 }
 
 /// One data plane of a frame.
@@ -300,6 +313,36 @@ impl<T: Pixel> Plane<T> {
 
         Self {
             data: PlaneData::from_slice(data),
+            cfg: PlaneConfig {
+                stride,
+                alloc_height: len / stride,
+                width: stride,
+                height: len / stride,
+                xdec: 0,
+                ydec: 0,
+                xpad: 0,
+                ypad: 0,
+                xorigin: 0,
+                yorigin: 0,
+            },
+        }
+    }
+
+    /// # Panics
+    ///
+    /// - If `len` is not a multiple of `stride`
+    ///
+    /// # Safety
+    ///
+    /// - This changes a non-mutable reference to a mutable one.
+    ///   DO NOT reuse the original source of the input data for ANY PURPOSES afterwards.
+    pub unsafe fn from_slice_zerocopy(data: &[T], stride: usize) -> Self {
+        let len = data.len();
+
+        assert!(len % stride == 0);
+
+        Self {
+            data: PlaneData::from_slice_zerocopy(data),
             cfg: PlaneConfig {
                 stride,
                 alloc_height: len / stride,

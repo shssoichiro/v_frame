@@ -1,3 +1,7 @@
+## Version 0.4.0
+
+- Add (unsafe) zerocopy API for building frames
+
 ## Version 0.3.3
 
 - Add `row_cropped` and `row_slice_cropped` methods to get rows without padding
